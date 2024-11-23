@@ -1,63 +1,57 @@
-import InputError from '../error/InputError.js';
-import predictBinaryClassificationCancer from '../services/inferenceService.js';
-import storeData from '../services/storeData.js';
-import loadHistoryData from '../services/loadHistoryData.js';
-
-const postPredictHandler = async (request, h) => {
-  try {
-    const { model } = request.server.app;
-    const { image } = request.payload;
-
-    const { confidenceScore, label, suggestion } =
-      await predictBinaryClassificationCancer(model, image);
-    const id = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-
-    const data = {
-      id,
-      result: label,
-      suggestion,
-      createdAt,
-    };
-
-    await storeData(id, data);
-
-    return h
-      .response({
-        status: 'success',
-        message:
-          confidenceScore >= 100 || confidenceScore < 1
-            ? 'Model is predicted successfully'
-            : 'Model is predicted successfully but under threshold. Please use the correct picture',
-        data,
-      })
-      .code(201);
-  } catch (error) {
-    throw new InputError('Terjadi kesalahan dalam melakukan prediksi', 400);
+const predictClassification = require('../services/inferenceService');
+const crypto = require('crypto');
+const storeData = require('../services/storeData');
+const getAllData = require('../services/getAllData');
+ 
+async function postPredictHandler(request, h) {
+  const { image } = request.payload;
+  const { model } = request.server.app;
+ 
+  const { label, suggestion } = await predictClassification(model, image);
+  const id = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+ 
+  const data = {
+    "id": id,
+    "result": label,
+    "suggestion": suggestion,
+    "createdAt": createdAt
   }
-};
+ 
+  await storeData(id, data);
 
-const getPredictHistoryHandler = async (request, h) => {
-  try {
-    const { data } = await loadHistoryData();
+  const response = h.response({
+    status: 'success',
+    message: 'Model is predicted successfully',
+    data
+  })
+  response.code(201);
+  return response;
+}
+ 
+async function postPredictHistoriesHandler(request, h) {
+  const allData = await getAllData();
+  
+  const formatAllData = [];
+  allData.forEach(doc => {
+      const data = doc.data();
+      formatAllData.push({
+          id: doc.id,
+          history: {
+              result: data.result,
+              createdAt: data.createdAt,
+              suggestion: data.suggestion,
+              id: doc.id
+          }
+      });
+  });
+  
+  const response = h.response({
+    status: 'success',
+    data: formatAllData
+  })
+  response.code(200);
+  return response;
+}
 
-    return h
-      .response({
-        status: 'success',
-        data,
-      })
-      .code(200);
-  } catch (error) {
-    throw new InputError('Terjadi kesalahan dalam melakukan prediksi', 400);
-  }
-};
-
-const NotFoundHandler = (request, h) =>
-  h
-    .response({
-      status: 'fail',
-      message: 'Halaman tidak ditemukan',
-    })
-    .code(404);
-
-export { postPredictHandler, NotFoundHandler, getPredictHistoryHandler };
+module.exports = { postPredictHandler, postPredictHistoriesHandler };
